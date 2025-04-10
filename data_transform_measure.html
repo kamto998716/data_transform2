@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Data Dispersion Visualization Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjs@11.8.0/lib/browser/math.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+    
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+    
+        h2 {
+            color: #2980b9;
+            margin-top: 30px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #ddd;
+        }
+    
+        h3 {
+            color: #3498db;
+            margin-top: 20px;
+        }
+    
+        div {
+            background-color: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+    
+        textarea, select, input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+    
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+        }
+    
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+    
+        button:hover {
+            background-color: #2980b9;
+        }
+    
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+    
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+    
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+    
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    
+        .data-display {
+            background-color: #f0f7ff;
+            border-left: 4px solid #3498db;
+        }
+    
+        #NewDataDisplay {
+            font-family: monospace;
+            padding: 10px;
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+    
+        canvas {
+            width: 100% !important;
+            height: 300px !important;
+            margin-top: 10px;
+        }
+    </style>
+    
+</head>
+<body>
+    <h1>Data Dispersion Visualization Tool</h1>
+    
+    <div>
+        <h2>Input Data</h2>
+        <textarea id="dataInput" rows="3" cols="50" title="Enter your data here" placeholder="Enter comma-separated values">10, 15, 20, 25, 30, 35, 40, 45, 50</textarea>
+        <button onclick="updateData()">Update Data</button>
+    </div>
+    <div class="data-display">
+        <h3>New Data</h3>
+        <div id="NewDataDisplay"></div>
+    </div>
+    
+    <div>
+        <h2>Data Transformations</h2>
+        <label>Operation:</label>
+        <select id="operation" title="Select a data transformation operation">
+            <option value="add">Add</option>
+            <option value="subtract">Subtract</option>
+            <option value="multiply">Multiply</option>
+            <option value="divide">Divide</option>
+            <option value="power">Power</option>
+            <option value="log">Log (base 10)</option>
+            <option value="ln">Natural Log</option>
+            <option value="sqrt">Square Root</option>
+        </select>
+        <label>Value:</label>
+        <input type="number" id="operationValue" value="5" step="any" title="Enter a value for the operation" placeholder="Enter value">
+        <button onclick="applyTransformation()">Apply</button>
+        <button onclick="resetData()">Reset to Original</button>
+    </div>
+    
+    <div>
+        <h2>Visualization</h2>
+        <canvas id="boxPlotChart" width="800" height="200"></canvas>
+    </div>
+    
+    <div>
+        <h2>Statistics</h2>
+        <table border="1" style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th>Statistic</th>
+                    <th>Original Value</th>
+                    <th>New Value</th>
+                    <th>Change</th>
+                </tr>
+            </thead>
+            <tbody id="statsTable">
+            </tbody>
+        </table>
+    </div>
+    
+    <script>
+        let originalData = [];
+        let NewData = [];
+        let boxPlotChart = null;
+        
+        // Initialize on page load
+        window.onload = function() {
+            updateData();
+        };
+        function updateNewDataDisplay() {
+            const displayElement = document.getElementById('NewDataDisplay');
+            displayElement.innerHTML = NewData.join(', ');
+        }
+        function updateData() {
+            try {
+                const dataStr = document.getElementById('dataInput').value;
+                originalData = dataStr.split(',').map(x => parseFloat(x.trim())).filter(x => !isNaN(x));
+                NewData = [...originalData];
+                updateVisualization();
+                updateNewDataDisplay();
+            } catch (error) {
+                alert("Error parsing data: " + error.message);
+            }
+        }
+        
+        function resetData() {
+            NewData = [...originalData];
+            updateVisualization();
+            updateNewDataDisplay();
+        }
+        
+        function applyTransformation() {
+            const operation = document.getElementById('operation').value;
+            const value = parseFloat(document.getElementById('operationValue').value);
+            
+            if (isNaN(value) && operation !== 'log' && operation !== 'ln' && operation !== 'sqrt') {
+                alert("Please enter a valid number for the operation.");
+                return;
+            }
+            
+            try {
+                NewData = NewData.map(x => {
+                    switch(operation) {
+                        case 'add': return x + value;
+                        case 'subtract': return x - value;
+                        case 'multiply': return x * value;
+                        case 'divide': 
+                            if (value === 0) throw new Error("Cannot divide by zero");
+                            return x / value;
+                        case 'power': return Math.pow(x, value);
+                        case 'log': 
+                            if (x <= 0) throw new Error("Cannot take log of non-positive number");
+                            return Math.log10(x);
+                        case 'ln': 
+                            if (x <= 0) throw new Error("Cannot take ln of non-positive number");
+                            return Math.log(x);
+                        case 'sqrt': 
+                            if (x < 0) throw new Error("Cannot take square root of negative number");
+                            return Math.sqrt(x);
+                        default: return x;
+                    }
+                });
+                updateVisualization();
+                updateNewDataDisplay();
+            } catch (error) {
+                alert("Error applying transformation: " + error.message);
+            }
+        }
+        
+        function calculateStatistics(data) {
+            if (data.length === 0) return {};
+            
+            // Sort data for easier calculations
+            const sortedData = [...data].sort((a, b) => a - b);
+            
+            // Min and Max
+            const min = sortedData[0];
+            const max = sortedData[sortedData.length - 1];
+            
+            // Mean
+            const sum = sortedData.reduce((acc, val) => acc + val, 0);
+            const mean = sum / sortedData.length;
+            
+            // Median
+            let median;
+            const mid = Math.floor(sortedData.length / 2);
+            if (sortedData.length % 2 === 0) {
+                median = (sortedData[mid - 1] + sortedData[mid]) / 2;
+            } else {
+                median = sortedData[mid];
+            }
+            
+            // Mode
+            const counts = {};
+            sortedData.forEach(value => {
+                counts[value] = (counts[value] || 0) + 1;
+            });
+            let mode = null;
+            let maxCount = 0;
+            for (const [value, count] of Object.entries(counts)) {
+                if (count > maxCount) {
+                    maxCount = count;
+                    mode = parseFloat(value);
+                }
+            }
+            if (maxCount === 1) {
+                mode = "No mode";
+            }
+            
+            // Variance and Standard Deviation
+            const squaredDiffs = sortedData.map(value => Math.pow(value - mean, 2));
+            const variance = squaredDiffs.reduce((acc, val) => acc + val, 0) / sortedData.length;
+            const stdDev = Math.sqrt(variance);
+            
+            // Quartiles and IQR
+            const q1Index = Math.floor(sortedData.length * 0.25);
+            const q3Index = Math.floor(sortedData.length * 0.75);
+            const q1 = sortedData[q1Index];
+            const q3 = sortedData[q3Index];
+            const iqr = q3 - q1;
+            
+            // Range
+            const range = max - min;
+            
+            return {
+                min,
+                max,
+                mean,
+                median,
+                mode,
+                variance,
+                stdDev,
+                q1,
+                q3,
+                iqr,
+                range
+            };
+        }
+        
+        function updateVisualization() {
+    const originalStats = calculateStatistics(originalData);
+    const NewStats = calculateStatistics(NewData);
+    
+    // Update statistics table
+    const statsTable = document.getElementById('statsTable');
+    statsTable.innerHTML = '';
+    
+    const statsToShow = [
+        
+        { name: 'Mean', key: 'mean' },
+        { name: 'Mode', key: 'mode' },
+        { name: 'Median', key: 'median' },
+        { name: 'Minimum', key: 'min' },
+        { name: 'Maximum', key: 'max' },
+        { name: 'Q1 (lower percentile)', key: 'q1' },
+        { name: 'Q3 (upper percentile)', key: 'q3' },
+        { name: 'Range', key: 'range' },
+        { name: 'IQR', key: 'iqr' },
+        { name: 'Standard Deviation', key: 'stdDev' },
+        { name: 'Variance', key: 'variance' }
+        
+        
+        
+    ];
+    
+    statsToShow.forEach(stat => {
+        const row = document.createElement('tr');
+        
+        const nameCell = document.createElement('td');
+        nameCell.textContent = stat.name;
+        row.appendChild(nameCell);
+        
+        const originalCell = document.createElement('td');
+        originalCell.textContent = typeof originalStats[stat.key] === 'number' 
+            ? originalStats[stat.key].toFixed(2) 
+            : originalStats[stat.key];
+        row.appendChild(originalCell);
+        
+        const NewCell = document.createElement('td');
+        NewCell.textContent = typeof NewStats[stat.key] === 'number' 
+            ? NewStats[stat.key].toFixed(2) 
+            : NewStats[stat.key];
+        row.appendChild(NewCell);
+        
+        const changeCell = document.createElement('td');
+        if (typeof originalStats[stat.key] === 'number' && typeof NewStats[stat.key] === 'number') {
+            const change = NewStats[stat.key] - originalStats[stat.key];
+            const percentChange = (change / Math.abs(originalStats[stat.key])) * 100;
+            changeCell.textContent = `${change.toFixed(2)} (${percentChange.toFixed(2)}%)`;
+            
+            if (change > 0) {
+                changeCell.style.color = 'green';
+            } else if (change < 0) {
+                changeCell.style.color = 'red';
+            }
+        } else {
+            changeCell.textContent = 'N/A';
+        }
+        row.appendChild(changeCell);
+        
+        statsTable.appendChild(row);
+    });
+    
+    // Update box plot
+    if (boxPlotChart) {
+        boxPlotChart.destroy();
+    }
+    
+    const ctx = document.getElementById('boxPlotChart').getContext('2d');
+    
+    // Create data for box plot
+    const originalBoxData = {
+        min: originalStats.min,
+        q1: originalStats.q1,
+        median: originalStats.median,
+        q3: originalStats.q3,
+        max: originalStats.max
+    };
+    
+    const NewBoxData = {
+        min: NewStats.min,
+        q1: NewStats.q1,
+        median: NewStats.median,
+        q3: NewStats.q3,
+        max: NewStats.max
+    };
+    
+    // Custom box plot implementation
+    boxPlotChart = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: [
+                // Original data box plot
+                {
+                    label: 'Original Data',
+                    data: [
+                        {x: 0, y: originalBoxData.min}, // min
+                        {x: 0, y: originalBoxData.q1},  // q1
+                        {x: 0, y: originalBoxData.median}, // median
+                        {x: 0, y: originalBoxData.q3},  // q3
+                        {x: 0, y: originalBoxData.max}  // max
+                    ],
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    boxPlot: true
+                },
+                // New data box plot
+                {
+                    label: 'New Data',
+                    data: [
+                        {x: 1, y: NewBoxData.min}, // min
+                        {x: 1, y: NewBoxData.q1},  // q1
+                        {x: 1, y: NewBoxData.median}, // median
+                        {x: 1, y: NewBoxData.q3},  // q3
+                        {x: 1, y: NewBoxData.max}  // max
+                    ],
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    boxPlot: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: {
+                    type: 'category',
+                    labels: ['Original Data', 'New Data'],
+                    offset: true
+                },
+                y: {
+                    beginAtZero: false
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const datasetIndex = context.datasetIndex;
+                            const datasetLabel = context.chart.data.datasets[datasetIndex].label;
+                            if (datasetIndex === 0) {
+                                return [
+                                    `${datasetLabel}:`,
+                                    `Min: ${originalBoxData.min.toFixed(2)}`,
+                                    `Q1: ${originalBoxData.q1.toFixed(2)}`,
+                                    `Median: ${originalBoxData.median.toFixed(2)}`,
+                                    `Q3: ${originalBoxData.q3.toFixed(2)}`,
+                                    `Max: ${originalBoxData.max.toFixed(2)}`
+                                ];
+                            } else {
+                                return [
+                                    `${datasetLabel}:`,
+                                    `Min: ${NewBoxData.min.toFixed(2)}`,
+                                    `Q1: ${NewBoxData.q1.toFixed(2)}`,
+                                    `Median: ${NewBoxData.median.toFixed(2)}`,
+                                    `Q3: ${NewBoxData.q3.toFixed(2)}`,
+                                    `Max: ${NewBoxData.max.toFixed(2)}`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        plugins: [{
+            id: 'boxplot',
+            beforeDraw: function(chart) {
+                const ctx = chart.ctx;
+                chart.data.datasets.forEach((dataset, i) => {
+                    if (dataset.boxPlot) {
+                        const meta = chart.getDatasetMeta(i);
+                        if (!meta.hidden) {
+                            const xScale = chart.scales.x;
+                            const yScale = chart.scales.y;
+                            
+                            // Get the x position for this dataset
+                            const xValue = i === 0 ? 0 : 1;
+                            const x = xScale.getPixelForValue(xValue);
+                            
+                            // Get y positions for the box plot elements
+                            const yMin = yScale.getPixelForValue(dataset.data[0].y);
+                            const yQ1 = yScale.getPixelForValue(dataset.data[1].y);
+                            const yMedian = yScale.getPixelForValue(dataset.data[2].y);
+                            const yQ3 = yScale.getPixelForValue(dataset.data[3].y);
+                            const yMax = yScale.getPixelForValue(dataset.data[4].y);
+                            
+                            const width = 40; // Box width
+                            
+                            // Draw min to max vertical line (whisker)
+                            ctx.beginPath();
+                            ctx.moveTo(x, yMin);
+                            ctx.lineTo(x, yMax);
+                            ctx.strokeStyle = dataset.borderColor;
+                            ctx.lineWidth = dataset.borderWidth;
+                            ctx.stroke();
+                            
+                            // Draw horizontal lines at min and max (whisker caps)
+                            ctx.beginPath();
+                            ctx.moveTo(x - width/3, yMin);
+                            ctx.lineTo(x + width/3, yMin);
+                            ctx.moveTo(x - width/3, yMax);
+                            ctx.lineTo(x + width/3, yMax);
+                            ctx.stroke();
+                            
+                            // Draw the box (Q1 to Q3)
+                            ctx.beginPath();
+                            ctx.rect(x - width/2, yQ1, width, yQ3 - yQ1);
+                            ctx.fillStyle = dataset.backgroundColor;
+                            ctx.fill();
+                            ctx.strokeStyle = dataset.borderColor;
+                            ctx.stroke();
+                            
+                            // Draw the median line
+                            ctx.beginPath();
+                            ctx.moveTo(x - width/2, yMedian);
+                            ctx.lineTo(x + width/2, yMedian);
+                            ctx.strokeStyle = dataset.borderColor;
+                            ctx.lineWidth = dataset.borderWidth * 2;
+                            ctx.stroke();
+                        }
+                    }
+                });
+            }
+        }]
+    });
+}
+
+    </script>
+</body>
+</html>
